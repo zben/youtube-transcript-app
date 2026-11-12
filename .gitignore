@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.wrangler/
+
+# Local secrets — never commit
+.env
+.dev.vars
+.env.*
+!.env.example
+
+# Live local SQLite database (WAL sidecars included). Backed up separately from git.
+data/
+
+*.log
+.DS_Store

@@ -1,0 +1,6 @@
+# Copy to .dev.vars for `wrangler dev` local Worker preview (git-ignored).
+# Production reads GEMINI_API_KEY from `wrangler secret put GEMINI_API_KEY` instead.
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Set to "true" to enable verbose request logging in the Worker
+# DEBUG=true

@@ -1,0 +1,20 @@
+name = "youtube-transcript-app"
+main = "src/worker-main.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Local/dev preview: `npx wrangler dev` uses the local D1 copy in .wrangler/state/v3/d1
+[[d1_databases]]
+binding = "DB"
+database_name = "youtube-transcript-d1"
+# Created 2026-11-12 via `npx wrangler d1 create youtube-transcript-d1`.
+database_id = "56a4a934-9884-4381-8b25-b531c9722e44"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# API + SPA deep links must reach the Worker; all other paths serve bundled static files first.
+run_worker_first = ["/api/*", "/summary/*", "/video/*"]
+
+[observability]
+enabled = true

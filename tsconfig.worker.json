@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": [
+    "src/worker-main.ts",
+    "src/app.ts",
+    "src/prompts.ts",
+    "src/repositories/**/*.ts",
+    "src/utils/**/*.ts"
+  ]
+}
