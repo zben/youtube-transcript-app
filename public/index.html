@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <base href="/" />
+  <title>YouTube 对话总结与 5W1H 深度精读</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="/vendor/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+        <h1>YouTube 对话总结与 5W1H 精读</h1>
+      </div>
+    </header>
+
+    <!-- Ultra-Clean Input Section -->
+    <section class="input-card">
+      <form id="summary-form">
+        <div class="input-group">
+          <div class="input-wrapper">
+            <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input 
+              type="text" 
+              id="url-input" 
+              placeholder="输入 YouTube 视频链接 (例如: https://www.youtube.com/watch?v=xRh2sVcNXQ8)"
+              required
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="button" id="clear-btn" class="clear-btn" title="清空" style="display: none;">&times;</button>
+          </div>
+          <button type="submit" id="submit-btn" class="btn btn-primary">
+            <span class="btn-text">开始生成</span>
+            <span class="btn-loader" style="display: none;">
+              <span class="spinner"></span> 正在生成...
+            </span>
+          </button>
+        </div>
+        <details class="instruction-details" id="instruction-details">
+          <summary>自定义生成要求（可选）</summary>
+          <p class="instruction-hint">
+            可指定 <b>任务类型</b>（总结 / 时间轴 / 要点清单 / 金句摘录 / 行动项 / 翻译）、<b>输出风格</b>（口语化 / 学术 / 极简 / 表格式）、<b>目标受众</b>（投资人 / 工程师 / 管理层 / 大众）、<b>约束条件</b>（字数或条数上限、输出语言、必须或禁止包含的内容）。留空则使用默认的深度对话总结格式。
+          </p>
+          <textarea
+            id="instruction-input"
+            class="instruction-input"
+            rows="3"
+            maxlength="1000"
+            placeholder="例如：只提炼 6 条给投资人看的要点，口语化，总字数不超过 400 字，不要技术实现细节。"
+            autocomplete="off"
+          ></textarea>
+          <div class="instruction-counter"><span id="instruction-count">0</span>/1000</div>
+        </details>
+        <div class="quick-examples">
+          <span>快速体验：</span>
+          <button type="button" class="tag-btn" data-url="https://www.youtube.com/watch?v=xRh2sVcNXQ8">Marc Andreessen 2026 Outlook</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Global Alert / Status Box -->
+    <div id="status-container" class="alert alert-info" style="display: none;">
+      <span class="spinner-small"></span>
+      <span id="status-text">准备中...</span>
+    </div>
+
+    <!-- Enhanced Error & Debuggability Container -->
+    <div id="error-container" class="alert-error-card" style="display: none;">
+      <div class="error-main">
+        <div class="error-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <div class="error-content">
+          <div class="error-title-row">
+            <span class="error-title" id="error-title">操作失败</span>
+            <span class="error-code-badge" id="error-code-badge" style="display: none;"></span>
+          </div>
+          <div class="error-text" id="error-text"></div>
+        </div>
+      </div>
+      <div class="error-actions" id="error-actions">
+        <button type="button" class="btn btn-sm btn-retry" id="error-retry-btn" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          立即重试
+        </button>
+        <button type="button" class="btn-text-action" id="error-debug-toggle" style="display: none;">
+          查看诊断信息 ▼
+        </button>
+      </div>
+      <div class="error-debug-panel" id="error-debug-panel" style="display: none;">
+        <div class="debug-panel-header">
+          <span>技术诊断信息 (Debug Info)</span>
+          <button type="button" class="btn-debug-copy" id="error-debug-copy-btn">复制诊断信息</button>
+        </div>
+        <pre class="debug-code-box" id="error-debug-content"></pre>
+      </div>
+    </div>
+
+    <!-- Direct Streaming Output Area (No tabs, no clutter) -->
+    <main id="output-container" class="output-container" style="display: none;">
+      <div class="output-header-bar">
+        <div class="output-status-label" id="stream-status-label">正在流式输出中...</div>
+        <div class="output-actions">
+          <button id="copy-markdown-btn" class="btn btn-secondary btn-sm" style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            复制全文 Markdown
+          </button>
+          <button id="clear-video-data-btn" class="btn btn-outline-danger btn-sm" style="display: none;" title="清除此视频在数据库中的所有字幕、总结与 5W1H 缓存">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            清除此视频数据
+          </button>
+        </div>
+      </div>
+      <div id="rendered-content" class="rendered-content"></div>
+    </main>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">已复制到剪贴板！</div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
