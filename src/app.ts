@@ -26,6 +26,15 @@ function normalizeInstruction(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, MAX_INSTRUCTION_CHARS) : '';
 }
 
+/**
+ * Markdown the browser is currently showing. Used as 5W1H context when it is a customized,
+ * non-stored view; capped so a crafted client cannot stream an unbounded prompt body.
+ */
+const MAX_SOURCE_MARKDOWN_CHARS = 200_000;
+function normalizeSourceMarkdown(value: unknown): string {
+  return typeof value === 'string' ? value.trim().slice(0, MAX_SOURCE_MARKDOWN_CHARS) : '';
+}
+
 type AppEnv = { Variables: { requestId: string } };
 
 export function createApp(deps: AppDeps): Hono<AppEnv> {
@@ -162,21 +171,29 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
       // Check Database Cache first unless forceRefresh requested
       const existingVideo = await repo.getVideoByYoutubeId(videoId);
-      if (existingVideo && !forceRefresh && !instruction) {
-        const cachedSummary = await repo.getSummary(existingVideo.id);
-        if (cachedSummary && cachedSummary.trim().length > 50) {
-          logger.info(`Cache Hit: Returning stored summary for ${videoId}`, context);
-          await sendEvent({ status: 'ready', videoId, fromCache: true, title: existingVideo.title });
-          await sendEvent({ text: cachedSummary });
-          await finishStream();
-          return;
-        }
+      const storedSummary = existingVideo ? await repo.getSummary(existingVideo.id) : undefined;
+      const hasStoredSummary = !!storedSummary && storedSummary.trim().length > 50;
+
+      if (existingVideo && !forceRefresh && !instruction && hasStoredSummary) {
+        logger.info(`Cache Hit: Returning stored summary for ${videoId}`, context);
+        await sendEvent({ status: 'ready', videoId, fromCache: true, title: existingVideo.title });
+        await sendEvent({ text: storedSummary });
+        await finishStream();
+        return;
       }
+
+      // Without an instruction the result is always the authoritative summary. With one, it is
+      // only stored when the video has no summary at all — otherwise chapter 5W1H would have
+      // nothing to work from, and a scoped one-off would still never overwrite an existing one.
+      const persistResult = !instruction || !hasStoredSummary;
 
       if (instruction) {
         await sendEvent({
           status: 'fetching_transcript',
-          message: '正在按你的自定义要求生成（本次结果不写入数据库）...'
+          persisted: persistResult,
+          message: persistResult
+            ? '正在按你的自定义要求生成（该视频尚无默认总结，本次结果将作为默认总结保存）...'
+            : '正在按你的自定义要求生成（本次结果不写入数据库）...'
         });
       }
 
@@ -287,11 +304,16 @@ ${meta.description || existingVideo?.description || '无官方简介'}
         }
 
         // Persist summary to the database if meaningful content was generated
-        if (!instruction && fullMarkdown && fullMarkdown.trim().length > 50) {
+        if (persistResult && fullMarkdown && fullMarkdown.trim().length > 50) {
           const saving = repo
             .saveSummary(videoUuid, fullMarkdown)
             .then(() => {
-              logger.info(`Successfully persisted full summary to DB (${fullMarkdown.length} chars)`, context);
+              logger.info(
+                `Successfully persisted full summary to DB (${fullMarkdown.length} chars, ${
+                  instruction ? 'customized run adopted as the default summary' : 'default summary'
+                })`,
+                context
+              );
             })
             .catch((dbErr: any) => {
               logger.error('Failed to save summary to DB', dbErr, context);
@@ -306,7 +328,7 @@ ${meta.description || existingVideo?.description || '无官方简介'}
         const appError = classifyError(rawError, context);
 
         // If partial summary was accumulated before error, persist it!
-        if (!instruction && fullMarkdown && fullMarkdown.trim().length > 100) {
+        if (persistResult && fullMarkdown && fullMarkdown.trim().length > 100) {
           try {
             await repo.saveSummary(videoUuid, fullMarkdown);
             logger.warn(`Persisted partial summary (${fullMarkdown.length} chars) before error`, context);
@@ -336,6 +358,11 @@ ${meta.description || existingVideo?.description || '无官方简介'}
     const payload = await c.req.json().catch(() => ({} as any));
     const videoId = payload?.videoId;
     const sectionHeading = payload?.sectionHeading;
+    // A customized view is not in the DB by design, so when the browser is showing one it has to
+    // hand the text over. That makes the answer a one-off too: variant-derived rows must not be
+    // keyed under the plain chapter heading, or the default view would inherit them.
+    const sourceMarkdown = normalizeSourceMarkdown(payload?.sourceMarkdown);
+    const oneOffView = sourceMarkdown.length > 50;
 
     if (!videoId || !sectionHeading) {
       const err = new AppError({
@@ -361,8 +388,8 @@ ${meta.description || existingVideo?.description || '无官方简介'}
         });
       }
 
-      // 1. Check if 5W1H already persisted in D1/SQLite
-      const cached5W1H = await repo.get5W1H(video.id, sectionHeading);
+      // 1. Check if 5W1H already persisted in D1/SQLite (meaningful only for the stored view)
+      const cached5W1H = oneOffView ? undefined : await repo.get5W1H(video.id, sectionHeading);
       if (cached5W1H) {
         logger.info(`5W1H Cache Hit for "${sectionHeading}"`, context);
         return c.json({
@@ -378,8 +405,8 @@ ${meta.description || existingVideo?.description || '无官方简介'}
         });
       }
 
-      // 2. Retrieve the stored summaryMarkdown
-      const summaryMarkdown = await repo.getSummary(video.id);
+      // 2. Basis: the customized text on screen takes priority, otherwise the stored summary
+      const summaryMarkdown = oneOffView ? sourceMarkdown : await repo.getSummary(video.id);
       if (!summaryMarkdown) {
         throw new AppError({
           code: 'INVALID_INPUT',
@@ -455,13 +482,17 @@ ${meta.description || existingVideo?.description || '无官方简介'}
         }
       );
 
-      // Persist into SQLite / D1
+      // Persist into SQLite / D1 (a one-off answer about a customized view stays out of the table)
       const w5hId = crypto.randomUUID();
-      try {
-        await repo.save5W1H(w5hId, video.id, sectionHeading, parsedData);
-        logger.info(`Successfully saved 5W1H for "${sectionHeading}"`, context);
-      } catch (dbErr: any) {
-        logger.warn('Failed to save 5W1H to db (non-fatal)', context, dbErr);
+      if (oneOffView) {
+        logger.info(`Skipped persisting one-off 5W1H for "${sectionHeading}" (customized view)`, context);
+      } else {
+        try {
+          await repo.save5W1H(w5hId, video.id, sectionHeading, parsedData);
+          logger.info(`Successfully saved 5W1H for "${sectionHeading}"`, context);
+        } catch (dbErr: any) {
+          logger.warn('Failed to save 5W1H to db (non-fatal)', context, dbErr);
+        }
       }
 
       return c.json({

@@ -31,6 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentVideoId = null;
   let fullAccumulatedMarkdown = '';
+  // True while the screen shows a customized result that was never stored server-side.
+  let customizedOneOffView = false;
   let activeRetryAction = null;
   let lastDebugData = null;
   const collapsedState = new Map();
@@ -131,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function resetOutputView() {
     fullAccumulatedMarkdown = '';
+    customizedOneOffView = false;
     saved5W1HMap.clear();
     collapsedState.clear();
     renderedContent.innerHTML = '';
@@ -331,6 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (data.exists && data.summaryMarkdown) {
           fullAccumulatedMarkdown = data.summaryMarkdown;
+          customizedOneOffView = false;
           saved5W1HMap.clear();
           if (data.fiveWoneHList && Array.isArray(data.fiveWoneHList)) {
             data.fiveWoneHList.forEach((item) => {
@@ -408,6 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setOutputActionsVisible(false);
     renderedContent.innerHTML = '';
     fullAccumulatedMarkdown = '';
+    customizedOneOffView = false;
     collapsedState.clear();
 
     submitBtn.disabled = true;
@@ -474,6 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (parsed.status === 'connected') {
               setStatus('服务端已连接，正在处理...');
             } else if (parsed.status === 'fetching_transcript') {
+              if (typeof parsed.persisted === 'boolean') customizedOneOffView = !parsed.persisted;
               setStatus(parsed.message || '正在提取视频演职员名单与字幕...');
             } else if (parsed.status === 'ready') {
               if (parsed.videoId) currentVideoId = parsed.videoId;
@@ -812,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadingCard.innerHTML = `
       <div class="card-5w1h-title">
         <span class="spinner-small"></span>
-        <span>正在基于服务端总结提取【${escapeHtml(heading)}】的 5W1H...</span>
+        <span>正在基于${customizedOneOffView ? '当前显示的要求版' : '服务端已存总结'}提取【${escapeHtml(heading)}】的 5W1H...</span>
       </div>
     `;
     sectionEl.insertBefore(loadingCard, bodyEl);
@@ -826,7 +832,9 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         body: JSON.stringify({
           videoId: currentVideoId,
-          sectionHeading: heading
+          sectionHeading: heading,
+          // A customized view only exists in this tab, so hand its text over as the basis.
+          ...(customizedOneOffView ? { sourceMarkdown: fullAccumulatedMarkdown } : {})
         })
       });
 
