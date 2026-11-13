@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeHtmlEntities, extractVideoId } from '../src/utils/youtube.js';
-import { isValidYoutubeId, parse5W1HJson } from '../src/utils/section.js';
+import { extractSectionFromSummary, isValidYoutubeId, parse5W1HJson } from '../src/utils/section.js';
 import { matchFiveW1H } from '../src/repositories/heading.js';
 
 const clean = { who: 'Marc', what: 'AI 经济学', when: '当下', where: 'SaaS', why: '分发', how: '订阅' };
@@ -48,6 +48,31 @@ test('parse5W1HJson rejects what must be retried, and fills gaps the UI cannot r
   assert.equal(parse5W1HJson(JSON.stringify({ ...clean, who: '' })).who, '核心人物');
 });
 
+
+const chapteredSummary = [
+  '# 对话安德森',
+  '',
+  '## 一、AI 收入爆发',
+  'Marc: 这些是价值数万亿美元的问题。',
+  '### 子议题：定价',
+  'Ben: 分发优势让产品立刻触达全球。',
+  '',
+  '## 二、单位成本曲线',
+  'Chris: GPU 供给改善后成本会持续下降。'
+].join('\n');
+
+test('extractSectionFromSummary returns the whole chapter body and stops at the next chapter', async () => {
+  const section = extractSectionFromSummary(chapteredSummary, '## 一、 AI 收入爆发');
+
+  assert.match(section, /^## 一、AI 收入爆发/);
+  assert.ok(section.includes('价值数万亿美元的问题'), 'the body must come along with the heading');
+  assert.ok(section.includes('分发优势'), '### sub-headings stay inside their chapter');
+  assert.ok(!section.includes('单位成本曲线'), 'must stop before the next ## heading');
+
+  assert.ok(extractSectionFromSummary(chapteredSummary, '二、单位成本曲线').endsWith('成本会持续下降。'), 'last chapter runs to EOF');
+  assert.equal(extractSectionFromSummary(chapteredSummary, '不存在的章节'), '');
+  assert.equal(extractSectionFromSummary(chapteredSummary, '##'), '');
+});
 test('matchFiveW1H reuses stored rows across heading rewrites', async () => {
   const records = [
     { id: '1', video_id: 'v1', chapter_heading: '智能经济：收入爆发与成本塌陷', who: 'a', what: 'b', when: 'c', where: 'd', why: 'e', how: 'f' }

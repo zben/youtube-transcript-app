@@ -4,11 +4,14 @@ export function isValidYoutubeId(value: string): boolean {
   return /^[a-zA-Z0-9_-]{11}$/.test(value);
 }
 
-/** Helper to locate a specific chapter inside the stored summaryMarkdown */
+/** Helper to locate a specific chapter inside the summaryMarkdown the user is looking at */
 export function extractSectionFromSummary(summaryMarkdown: string, heading: string): string {
   const cleanHeading = heading.replace(/^[#\s一二三四五六七八九十\d.、-]+/, '').trim();
+  if (!cleanHeading) return '';
   const escaped = cleanHeading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`##\\s+.*?${escaped}[\\s\\S]*?(?=(?:^##\\s+)|$)`, 'm');
+  // Stop at the next `##` heading, not at the end of the heading line: with the `m` flag `$`
+  // would match there and the lazy quantifier would return the heading alone.
+  const regex = new RegExp(`##\\s+.*?${escaped}[\\s\\S]*?(?=\\n\\s*##\\s|(?![\\s\\S]))`, 'm');
   const match = summaryMarkdown.match(regex);
   if (match) {
     return match[0].trim();
